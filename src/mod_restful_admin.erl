@@ -58,7 +58,7 @@
 -module(mod_restful_admin).
 -author('jadahl@gmail.com').
 
--export([process_rest/1, get_room_occupants/1]).
+-export([process_rest/1, get_room_occupants/1, get_room_state/1, get_room_messages/1]).
 
 -behaviour(gen_restful_api).
 
@@ -85,10 +85,10 @@ process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _
           {simple, io_lib:format("A Response, no path: ~p~n", [Path])};
         [_] ->
           {simple, io_lib:format("A Response, with 1 path elt: ~p~n", [Path])};
-        [_, "foo"] ->
-          {ok, #rest_resp{ format = json, output = iolist_to_binary(mod_restful_mochijson2:encode([list_to_binary(X) || X <- Path]))}};
         [_, "room", RoomName, "occupants"] ->
           {ok, #rest_resp{ format = json, output = iolist_to_binary(mod_restful_mochijson2:encode([list_to_binary(X) || X <- get_room_occupants(RoomName)]))}};
+        [_, "room", RoomName, "messages"] ->
+          {ok, #rest_resp{ format = json, output = iolist_to_binary(mod_restful_mochijson2:encode(get_room_messages(RoomName)))}};
         _ ->
           {simple, io_lib:format("Fell through: A Response: ~p~n", [Path])}
     end;
@@ -96,20 +96,58 @@ process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _
 process_rest(_) ->
     {error, not_found}.
 
-get_room_occupants(RoomName) ->
+get_room_state(RoomName) ->
   case mnesia:dirty_read(muc_online_room,{RoomName,"conference.localhost"}) of
     [{_, _, Pid}] ->
       case gen_fsm:sync_send_all_state_event(Pid, get_state) of
         {ok, R} ->
-          dict:fold(fun (Key, Value, Acc) ->
-                {jid, UserName, Server, Resource, _, _, _} = Value#user.jid,
-                [UserName|Acc]
-            end,
-            [],
-            R#state.users);
+          {ok, R};
         _ ->
-          []
+          {error, "Unable to get room state."}
       end;
+      _ ->
+        notfound
+    end.
+
+get_room_occupants(RoomName) ->
+  case get_room_state(RoomName) of
+      {ok, State} ->
+        dict:fold(fun (_Key, Value, Acc) ->
+              {jid, UserName, _Server, _Resource, _, _, _} = Value#user.jid,
+              [UserName|Acc]
+          end,
+          [],
+          State#state.users);
+      _ ->
+        []
+    end.
+
+get_body_from_xmlelement([]) ->
+  notfound;
+get_body_from_xmlelement([H|T]) ->
+  case get_body_from_xmlelement(H) of
+      notfound ->
+        get_body_from_xmlelement(T);
+      Body ->
+        Body
+    end;
+get_body_from_xmlelement({xmlelement, "body", _Attributes, [{xmlcdata, Body}]}) ->
+  Body;
+get_body_from_xmlelement({xmlelement, _, _Attributes, Children}) ->
+  get_body_from_xmlelement(Children);
+get_body_from_xmlelement(_) ->
+  notfound.
+
+get_room_messages(RoomName) ->
+  case get_room_state(RoomName) of
+      {ok, State} ->
+        History = queue:to_list(State#state.history#lqueue.queue),
+        lists:map( 
+          fun ({From, Content, _, _Timestamp, _}) -> 
+              Body = get_body_from_xmlelement(Content),
+              [{from, list_to_binary(From)}, {body, Body}]
+          end, 
+          History);
       _ ->
         []
     end.
