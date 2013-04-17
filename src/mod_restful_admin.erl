@@ -58,12 +58,13 @@
 -module(mod_restful_admin).
 -author('jadahl@gmail.com').
 
--export([process_rest/1]).
+-export([process_rest/1, get_room_occupants/1]).
 
 -behaviour(gen_restful_api).
 
 -include("ejabberd.hrl").
 
+-include("mod_muc/mod_muc_room.hrl").
 -include("include/mod_restful.hrl").
 
 process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = Req) ->
@@ -78,8 +79,40 @@ process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = 
         _ ->
             {error, not_found}
     end;
+process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _Req) ->
+    case Path of
+        [] ->
+          {simple, io_lib:format("A Response, no path: ~p~n", [Path])};
+        [_] ->
+          {simple, io_lib:format("A Response, with 1 path elt: ~p~n", [Path])};
+        [_, "foo"] ->
+          {ok, #rest_resp{ format = json, output = iolist_to_binary(mod_restful_mochijson2:encode([list_to_binary(X) || X <- Path]))}};
+        [_, "room", RoomName, "occupants"] ->
+          {ok, #rest_resp{ format = json, output = iolist_to_binary(mod_restful_mochijson2:encode([list_to_binary(X) || X <- get_room_occupants(RoomName)]))}};
+        _ ->
+          {simple, io_lib:format("Fell through: A Response: ~p~n", [Path])}
+    end;
+
 process_rest(_) ->
     {error, not_found}.
+
+get_room_occupants(RoomName) ->
+  case mnesia:dirty_read(muc_online_room,{RoomName,"conference.localhost"}) of
+    [{_, _, Pid}] ->
+      case gen_fsm:sync_send_all_state_event(Pid, get_state) of
+        {ok, R} ->
+          dict:fold(fun (Key, Value, Acc) ->
+                {jid, UserName, Server, Resource, _, _, _} = Value#user.jid,
+                [UserName|Acc]
+            end,
+            [],
+            R#state.users);
+        _ ->
+          []
+      end;
+      _ ->
+        []
+    end.
 
 do_process(Request) ->
     case parse_request(Request) of
