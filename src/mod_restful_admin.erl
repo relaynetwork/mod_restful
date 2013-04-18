@@ -117,7 +117,6 @@ post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
   From  = string:concat(From2, binary_to_list(FromUserName)),
   case get_room_state(RoomName) of
     {ok, StateData} ->
-      ?INFO_MSG("post_message_to_room: got state data for room=~p~n", [RoomName]),
       JabberFrom = {jid, 
                     From,
                     "localhost",
@@ -127,11 +126,9 @@ post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
                     "the resource"},
 	    {FromNick1, _Role} = get_participant_data(JabberFrom, StateData),
       FromNick = if length(FromNick1) == 0 -> binary_to_list(FromUserName); true -> FromNick1 end,
-      ?INFO_MSG("post_message_to_room: got participant data FromNick=~p Role=~p~n", [FromNick, _Role]),
       To1 = string:concat(binary_to_list(FromUserName), "@conference.localhost"),
       To2 = string:concat(To1, "/"),
       To  = string:concat(To2, gen_msg_id('res')),
-      ?INFO_MSG("To: ~p", [To]),
       MessageId = gen_msg_id('system'),
       Packet = {xmlelement,"message",
                      [{"type","groupchat"},
@@ -140,7 +137,6 @@ post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
                       {"chatmessageid",gen_msg_id('cmid')},
                       {"to",To}],
                     [{xmlelement,"body",[],[{xmlcdata,Body}]}]},
-      ?INFO_MSG("post_message_to_room: foreaching, MessageId=~p~n", [MessageId]),
       lists:foreach(  fun({_LJID, Info}) ->
             ejabberd_router:route(
               jlib:jid_replace_resource( StateData#state.jid, FromNick),
@@ -151,7 +147,6 @@ post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
 
       gen_fsm:send_all_state_event(get_room_pid(RoomName), {add_message_to_history, FromNick, From, Packet}),
 
-      ?INFO_MSG("post_message_to_room: after foreach~n", []),
       io_lib:format("Posted Message[id=~p] to Room[~p].", [MessageId, RoomName]);
     _ ->
       io_lib:format("Room[~p] Not Found.", [RoomName])
