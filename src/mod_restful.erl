@@ -158,8 +158,10 @@ process(BasePath, #request{host = Host, path = Path} = Request) ->
 %
 
 handle_request(Host, BasePath, Request) ->
-    true = lists:member(Host, ejabberd_config:get_global_option(hosts)),
-    Proc = gen_mod:get_module_proc(Host, ?MODULE),
+    %% NB: allow requests regardless of inbound host
+    NewHost = lists:nth(1, ejabberd_config:get_global_option(hosts)),
+    true = lists:member(NewHost, ejabberd_config:get_global_option(hosts)),
+    Proc = gen_mod:get_module_proc(NewHost, ?MODULE),
     {ok, Module, Opts, GlobalOpts} =
         gen_server:call(Proc, {get_spec, BasePath}),
     handle_rest_request(Module, BasePath, Opts, GlobalOpts, Request).

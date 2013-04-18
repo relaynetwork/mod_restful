@@ -111,7 +111,6 @@ gen_msg_id(Prefix) ->
   lists:flatten(io_lib:format("~p~p", [Prefix, Timestamp])).
 
 post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
-  ?INFO_MSG("handle_post_message_to_room/posting: RoomName=~p From=~p Body=~p~n", [RoomName, FromUserName, Body]),
   From1 = string:concat(RoomName, "@conference.localhost"),
   From2 = string:concat(From1, "/"),
   From  = string:concat(From2, binary_to_list(FromUserName)),
