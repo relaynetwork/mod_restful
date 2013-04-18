@@ -82,6 +82,9 @@ start(Host, Opts) ->
         worker,
         [?MODULE]
     },
+    %% NB: REMOVE THIS
+   mod_restful_debug:start(),
+    %% NB: REMOVE THIS
     supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->

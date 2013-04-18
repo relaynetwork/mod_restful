@@ -58,7 +58,12 @@
 -module(mod_restful_admin).
 -author('jadahl@gmail.com').
 
--export([process_rest/1, get_room_occupants/1, get_room_state/1, get_room_messages/1]).
+-export([process_rest/1, 
+    get_room_occupants/1, 
+    get_room_state/1, 
+    get_room_messages/1, 
+    post_message_to_room/4,
+    handle_post_message_to_room/2]).
 
 -behaviour(gen_restful_api).
 
@@ -68,6 +73,7 @@
 -include("include/mod_restful.hrl").
 
 process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = Req) ->
+  mod_restful_debug:save(process_rest_post, {Path, Req}),
     case tl(Path) of
         [] ->
             case authorized(Req) of
@@ -76,10 +82,16 @@ process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = 
                 deny ->
                     {error, not_allowed}
             end;
+        ["room", RoomName, "message"] ->
+          mod_restful_debug:save(process_rest_room_post, {RoomName, Path, Req}),
+          {simple, handle_post_message_to_room(RoomName, Req)};
+          % {simple, io_lib:format("This is where we'd post a message to the Room: ~p: Path=~p~n", [RoomName, Path])};
         _ ->
-            {error, not_found}
+          {simple, io_lib:format("[POST] Not Found: Path=~p~n",[Path])}
+          %{error, not_found}
     end;
 process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _Req) ->
+    mod_restful_debug:save(process_rest_get, {Path, _Req}),
     case Path of
         [] ->
           {simple, io_lib:format("A Response, no path: ~p~n", [Path])};
@@ -96,18 +108,94 @@ process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _
 process_rest(_) ->
     {error, not_found}.
 
-get_room_state(RoomName) ->
+gen_msg_id(Prefix) ->
+  {MegaSec, Secs, MicroSecs} = now(),
+  Timestamp = MegaSec * 1000000 * 1000000 + Secs * 1000000 + MicroSecs,
+  lists:flatten(io_lib:format("~p~p", [Prefix, Timestamp])).
+
+post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
+  mod_restful_debug:save(post_message_to_room, {RoomName, FromUserName, Body}),
+  ?INFO_MSG("handle_post_message_to_room/posting: RoomName=~p From=~p Body=~p~n", [RoomName, FromUserName, Body]),
+  From1 = string:concat(RoomName, "@conference.localhost"),
+  From2 = string:concat(From1, "/"),
+  From  = string:concat(From2, binary_to_list(FromUserName)),
+  case get_room_state(RoomName) of
+    {ok, StateData} ->
+      ?INFO_MSG("post_message_to_room: got state data for room=~p~n", [RoomName]),
+      JabberFrom = {jid, 
+                    From,
+                    "localhost",
+                    "the resource",
+                    From,
+                    "localhost",
+                    "the resource"},
+	    {FromNick1, _Role} = get_participant_data(JabberFrom, StateData),
+      FromNick = if length(FromNick1) == 0 -> binary_to_list(FromUserName); true -> FromNick1 end,
+      ?INFO_MSG("post_message_to_room: got participant data FromNick=~p Role=~p~n", [FromNick, _Role]),
+      To1 = string:concat(binary_to_list(FromUserName), "@conference.localhost"),
+      To2 = string:concat(To1, "/"),
+      To  = string:concat(To2, gen_msg_id('res')),
+      ?INFO_MSG("To: ~p", [To]),
+      MessageId = gen_msg_id('system'),
+      Packet = {xmlelement,"message",
+                     [{"type","groupchat"},
+                      {"id",MessageId},
+                      {"friendly_from",FriendlyFrom},
+                      {"chatmessageid",gen_msg_id('cmid')},
+                      {"to",To}],
+                    [{xmlelement,"body",[],[{xmlcdata,Body}]}]},
+      ?INFO_MSG("post_message_to_room: foreaching, MessageId=~p~n", [MessageId]),
+      lists:foreach(  fun({_LJID, Info}) ->
+            ejabberd_router:route(
+              jlib:jid_replace_resource( StateData#state.jid, FromNick),
+              Info#user.jid,
+              Packet)
+        end,
+        ?DICT:to_list(StateData#state.users)),
+
+      gen_fsm:send_all_state_event(get_room_pid(RoomName), {add_message_to_history, FromNick, From, Packet}),
+
+      ?INFO_MSG("post_message_to_room: after foreach~n", []),
+      io_lib:format("Posted Message[id=~p] to Room[~p].", [MessageId, RoomName]);
+    _ ->
+      io_lib:format("Room[~p] Not Found.", [RoomName])
+  end.
+
+
+
+handle_post_message_to_room(RoomName, #rest_req{format = json, data = Data}) -> 
+  mod_restful_debug:save(handle_post_message_to_room, {RoomName, Data}),
+  {struct, Props} = Data, %mod_restful_mochijson2:decode(Data),
+  %% NB: should harden these so they can detect missing Body/From and report that back sensibly
+  [{_, Body}]         = lists:filter(fun ({Key,_Val}) -> Key == <<"body">> end, Props),
+  [{_, From}]         = lists:filter(fun ({Key,_Val}) -> Key == <<"from">> end, Props),
+  [{_, FriendlyFrom}] = lists:filter(fun ({Key,_Val}) -> Key == <<"friendly_from">> end, Props),
+  post_message_to_room(RoomName, From, FriendlyFrom, Body);
+
+handle_post_message_to_room(RoomName, Req) ->
+  mod_restful_debug:save(handle_post_message_to_room_unhandled, {RoomName, Req}),
+  io_lib:format("handle_post_message_to_room/unahndled: RoomName=~p Req=~p~n", [RoomName, Req]).
+
+get_room_pid(RoomName) ->
   case mnesia:dirty_read(muc_online_room,{RoomName,"conference.localhost"}) of
     [{_, _, Pid}] ->
+      Pid;
+      _ ->
+        notfound
+    end.
+
+get_room_state(RoomName) ->
+  case get_room_pid(RoomName) of
+    Pid -> 
       case gen_fsm:sync_send_all_state_event(Pid, get_state) of
         {ok, R} ->
           {ok, R};
         _ ->
           {error, "Unable to get room state."}
       end;
-      _ ->
-        notfound
-    end.
+    _ ->
+      notfound
+  end.
 
 get_room_occupants(RoomName) ->
   case get_room_state(RoomName) of
@@ -278,3 +366,16 @@ format_result_json(Tuple, {_, {tuple, ElementsF}}) ->
     % format a tuple as a list
     [format_result_json(E, F) || {E, F} <- lists:zip(TupleL, ElementsF)].
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% copied from:  ejabberd-2.1.11/src/mod_muc/mod_muc_room.erl:980
+get_participant_data(From, StateData) ->
+    case ?DICT:find(jlib:jid_tolower(From), StateData#state.users) of
+	{ok, #user{nick = FromNick, role = Role}} ->
+	    {FromNick, Role};
+	error ->
+	    {"", moderator}
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

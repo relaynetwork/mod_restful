@@ -7,7 +7,8 @@ BEAMS=mod_restful.beam \
       mod_restful_admin.beam \
       mod_restful_register.beam \
       mod_restful_mochinum.beam \
-      mod_restful_mochijson2.beam
+      mod_restful_mochijson2.beam \
+			mod_restful_debug.beam
 
 ALL_BEAMS=$(BEH_BEAMS) $(BEAMS)
 
@@ -22,6 +23,12 @@ TEST_BEAMS=test_ebin/tests.beam \
 TEST_DIST=$(addprefix test_ebin/,$(ALL_BEAMS)) \
 
 all: $(DIST_BEAMS)
+
+
+show:
+	@echo MY_SRCS=$(MY_SRCS)
+	@echo MY_BEAMS=$(MY_BEAMS)
+	@echo ALL_BEAMS=$(ALL_BEAMS)
 
 ebin/%.beam: src/%.erl
 	@mkdir -p ebin
