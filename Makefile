@@ -43,8 +43,7 @@ $(TEST_DIST): test_ebin/%.beam : src/%.erl
 	erlc -Dtest -pa ./test_ebin -I ./include -pa $(EJABBERD_SRC_PATH) -I $(EJABBERD_SRC_PATH) -o ./test_ebin $<
 
 install: all
-	cp ebin/*.beam ../../software/lib/ejabberd/ebin
-	#cp ebin/*.beam $(EJABBERD_SRC_PATH)
+	cp ebin/*.beam $(EJABBERD_SRC_PATH)
 
 build_tests: $(TEST_DIST) $(TEST_BEAMS)
 
