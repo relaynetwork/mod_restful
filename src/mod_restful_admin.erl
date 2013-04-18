@@ -73,7 +73,6 @@
 -include("include/mod_restful.hrl").
 
 process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = Req) ->
-  mod_restful_debug:save(process_rest_post, {Path, Req}),
     case tl(Path) of
         [] ->
             case authorized(Req) of
@@ -83,7 +82,6 @@ process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = 
                     {error, not_allowed}
             end;
         ["room", RoomName, "message"] ->
-          mod_restful_debug:save(process_rest_room_post, {RoomName, Path, Req}),
           {simple, handle_post_message_to_room(RoomName, Req)};
           % {simple, io_lib:format("This is where we'd post a message to the Room: ~p: Path=~p~n", [RoomName, Path])};
         _ ->
@@ -91,7 +89,6 @@ process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = 
           %{error, not_found}
     end;
 process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _Req) ->
-    mod_restful_debug:save(process_rest_get, {Path, _Req}),
     case Path of
         [] ->
           {simple, io_lib:format("A Response, no path: ~p~n", [Path])};
@@ -114,7 +111,6 @@ gen_msg_id(Prefix) ->
   lists:flatten(io_lib:format("~p~p", [Prefix, Timestamp])).
 
 post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
-  mod_restful_debug:save(post_message_to_room, {RoomName, FromUserName, Body}),
   ?INFO_MSG("handle_post_message_to_room/posting: RoomName=~p From=~p Body=~p~n", [RoomName, FromUserName, Body]),
   From1 = string:concat(RoomName, "@conference.localhost"),
   From2 = string:concat(From1, "/"),
@@ -164,7 +160,6 @@ post_message_to_room(RoomName, FromUserName, FriendlyFrom, Body) ->
 
 
 handle_post_message_to_room(RoomName, #rest_req{format = json, data = Data}) -> 
-  mod_restful_debug:save(handle_post_message_to_room, {RoomName, Data}),
   {struct, Props} = Data, %mod_restful_mochijson2:decode(Data),
   %% NB: should harden these so they can detect missing Body/From and report that back sensibly
   [{_, Body}]         = lists:filter(fun ({Key,_Val}) -> Key == <<"body">> end, Props),
@@ -173,7 +168,6 @@ handle_post_message_to_room(RoomName, #rest_req{format = json, data = Data}) ->
   post_message_to_room(RoomName, From, FriendlyFrom, Body);
 
 handle_post_message_to_room(RoomName, Req) ->
-  mod_restful_debug:save(handle_post_message_to_room_unhandled, {RoomName, Req}),
   io_lib:format("handle_post_message_to_room/unahndled: RoomName=~p Req=~p~n", [RoomName, Req]).
 
 get_room_pid(RoomName) ->
