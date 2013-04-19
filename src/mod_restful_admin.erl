@@ -179,15 +179,15 @@ get_room_pid(RoomName) ->
 
 get_room_state(RoomName) ->
   case get_room_pid(RoomName) of
+    notfound ->
+      notfound;
     Pid -> 
       case gen_fsm:sync_send_all_state_event(Pid, get_state) of
         {ok, R} ->
           {ok, R};
         _ ->
           {error, "Unable to get room state."}
-      end;
-    _ ->
-      notfound
+      end
   end.
 
 get_room_occupants(RoomName) ->
