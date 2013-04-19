@@ -65,6 +65,8 @@
     post_message_to_room/4,
     handle_post_message_to_room/2]).
 
+-export([format_result/3, format_result_json/2]).
+
 -behaviour(gen_restful_api).
 
 -include("ejabberd.hrl").
@@ -90,16 +92,19 @@ process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = 
     end;
 process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _Req) ->
     case Path of
-        [] ->
-          {simple, io_lib:format("A Response, no path: ~p~n", [Path])};
-        [_] ->
-          {simple, io_lib:format("A Response, with 1 path elt: ~p~n", [Path])};
+%        [] ->
+%          {simple, io_lib:format("A Response, no path: ~p~n", [Path])};
+%        [_] ->
+%          {simple, io_lib:format("A Response, with 1 path elt: ~p~n", [Path])};
         [_, "room", RoomName, "occupants"] ->
-          {ok, #rest_resp{ format = json, output = iolist_to_binary(mod_restful_mochijson2:encode([list_to_binary(X) || X <- get_room_occupants(RoomName)]))}};
+          Occupants = get_room_occupants(RoomName),
+          Result    = format_result_json( Occupants, {neverused,{list,{string,string}}} ),
+          {simple, {[{status, ok}, {count, length(Occupants)}, {recs,Result}]} };
         [_, "room", RoomName, "messages"] ->
-          {ok, #rest_resp{ format = json, output = iolist_to_binary(mod_restful_mochijson2:encode(get_room_messages(RoomName)))}};
+          Messages = get_room_messages(RoomName),
+          {simple, {[{status, ok}, {count, length(Messages)}, {recs,Messages}]} };
         _ ->
-          {simple, io_lib:format("Fell through: A Response: ~p~n", [Path])}
+          {simple, {[{status,"BadRequest"}, {message,io_lib:format("Fell through: A Response: ~p~n", [Path])}]}}
     end;
 
 process_rest(_) ->
@@ -345,6 +350,9 @@ format_result_json(Code, {_, rescode}) ->
     Code;
 format_result_json({Code, Text}, {_, restuple}) ->
     [{Code, list_to_binary(Text)}];
+%% NB: new
+format_result_json([], {_, {list, ElementsF}}) ->
+    [];
 format_result_json([E], {_, {list, ElementsF}}) ->
     [format_result_json(E, ElementsF)];
 format_result_json([E|T], {X, {list, ElementsF}}) ->
