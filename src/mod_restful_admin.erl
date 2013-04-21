@@ -90,21 +90,22 @@ process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = 
           {simple, io_lib:format("[POST] Not Found: Path=~p~n",[Path])}
           %{error, not_found}
     end;
-process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = _Req) ->
-    case Path of
-%        [] ->
-%          {simple, io_lib:format("A Response, no path: ~p~n", [Path])};
-%        [_] ->
-%          {simple, io_lib:format("A Response, with 1 path elt: ~p~n", [Path])};
-        [_, "room", RoomName, "occupants"] ->
-          Occupants = get_room_occupants(RoomName),
-          Result    = format_result_json( Occupants, {neverused,{list,{string,string}}} ),
-          {simple, {[{status, ok}, {count, length(Occupants)}, {recs,Result}]} };
-        [_, "room", RoomName, "messages"] ->
-          Messages = get_room_messages(RoomName),
-          {simple, {[{status, ok}, {count, length(Messages)}, {recs,Messages}]} };
-        _ ->
-          {simple, {[{status,"BadRequest"}, {message,io_lib:format("Fell through: A Response: ~p~n", [Path])}]}}
+process_rest(#rest_req{http_request = #request{method = 'GET', q = Query}, path = Path} = Req) ->
+    case authorized(Req) of
+      allow ->
+        case Path of
+          [_, "room", RoomName, "occupants"] ->
+            Occupants = get_room_occupants(RoomName),
+            Result    = format_result_json( Occupants, {neverused,{list,{string,string}}} ),
+            {simple, {[{status, ok}, {count, length(Occupants)}, {recs,Result}]} };
+          [_, "room", RoomName, "messages"] ->
+            Messages = get_room_messages(RoomName),
+            {simple, {[{status, ok}, {count, length(Messages)}, {recs,Messages}]} };
+          _ ->
+            {simple, {[{status,"BadRequest"}, {message,io_lib:format("Fell through: A Response: ~p~n", [Path])}]}}
+        end;
+      deny ->
+        {error, not_allowed}
     end;
 
 process_rest(_) ->
