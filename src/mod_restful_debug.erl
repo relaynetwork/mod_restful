@@ -1,3 +1,11 @@
+%%
+%%
+%% Start by calling:
+%%
+%%   l(mod_restful_debug).
+%%   mod_restful_debug:start().
+%%
+%%
 -module(mod_restful_debug).
 -author('Paul, The Heart').
 -behaviour(gen_server).

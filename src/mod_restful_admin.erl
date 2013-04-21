@@ -90,7 +90,7 @@ process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = 
           {simple, io_lib:format("[POST] Not Found: Path=~p~n",[Path])}
           %{error, not_found}
     end;
-process_rest(#rest_req{http_request = #request{method = 'GET', q = Query}, path = Path} = Req) ->
+process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = Req) ->
     case authorized(Req) of
       allow ->
         case Path of
