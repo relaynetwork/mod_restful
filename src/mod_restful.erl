@@ -157,7 +157,7 @@ process(BasePath, #request{host = Host, path = Path} = Request) ->
 % Internal
 %
 
-handle_request(Host, BasePath, Request) ->
+handle_request(_Host, BasePath, Request) ->
     %% NB: allow requests regardless of inbound host
     NewHost = lists:nth(1, ejabberd_config:get_global_option(hosts)),
     true = lists:member(NewHost, ejabberd_config:get_global_option(hosts)),
