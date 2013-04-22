@@ -75,20 +75,18 @@
 -include("include/mod_restful.hrl").
 
 process_rest(#rest_req{http_request = #request{method = 'POST'}, path = Path} = Req) ->
-    case tl(Path) of
-        [] ->
-            case authorized(Req) of
-                allow ->
-                    do_process(Req);
-                deny ->
-                    {error, not_allowed}
-            end;
-        ["room", RoomName, "message"] ->
-          {simple, handle_post_message_to_room(RoomName, Req)};
-          % {simple, io_lib:format("This is where we'd post a message to the Room: ~p: Path=~p~n", [RoomName, Path])};
-        _ ->
-          {simple, io_lib:format("[POST] Not Found: Path=~p~n",[Path])}
-          %{error, not_found}
+    case authorized(Req) of
+      allow ->
+        case tl(Path) of
+          [] ->
+            do_process(Req);
+          ["room", RoomName, "message"] ->
+            {simple, handle_post_message_to_room(RoomName, Req)};
+          _ ->
+            {simple, io_lib:format("[POST] Not Found: Path=~p~n",[Path])}
+        end;
+      deny ->
+        {error, not_allowed}
     end;
 process_rest(#rest_req{http_request = #request{method = 'GET'}, path = Path} = Req) ->
     case authorized(Req) of
